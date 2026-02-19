@@ -116,9 +116,9 @@ func TestTextFormatter(t *testing.T) {
 
 func TestNewFormatter(t *testing.T) {
 	tests := []struct {
-		name       string
-		format     string
-		wantType   string
+		name     string
+		format   string
+		wantType string
 	}{
 		{
 			name:     "json formatter",

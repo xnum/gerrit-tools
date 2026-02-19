@@ -214,7 +214,7 @@ func runPreflightChecks(log *logger.Logger, cfg *config.Config) error {
 	if err != nil {
 		log.Warnf("  ✗ gerrit-cli test failed: %v", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			log.Warnf("  Stderr: %s", string(exitErr.Stderr))
+			log.Warnf("  Stderr captured (%d bytes)", len(exitErr.Stderr))
 		}
 		return fmt.Errorf("gerrit-cli connectivity test failed: %w", err)
 	}

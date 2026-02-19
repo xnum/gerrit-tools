@@ -107,7 +107,7 @@ func (r *Reviewer) ReviewChange(ctx context.Context, req ReviewRequest) error {
 		return fmt.Errorf("claude execution failed: %w", err)
 	}
 
-	r.log.Debugf("Claude output:\n%s", output)
+	r.log.Debugf("Claude output length: %d characters", len(output))
 
 	r.log.Infof("Review completed: %s/c/%s/+/%d/%d",
 		r.cfg.Gerrit.HTTPUrl, req.Project, req.ChangeNumber, req.PatchsetNumber)

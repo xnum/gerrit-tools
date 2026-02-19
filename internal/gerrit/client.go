@@ -36,10 +36,10 @@ func NewClient(baseURL, username, password string) *Client {
 
 // ReviewInput represents the JSON payload for posting a review
 type ReviewInput struct {
-	Message  string                       `json:"message"`
-	Labels   map[string]int               `json:"labels,omitempty"`
-	Comments map[string][]CommentInput    `json:"comments,omitempty"`
-	Drafts   string                       `json:"drafts,omitempty"`
+	Message  string                    `json:"message"`
+	Labels   map[string]int            `json:"labels,omitempty"`
+	Comments map[string][]CommentInput `json:"comments,omitempty"`
+	Drafts   string                    `json:"drafts,omitempty"`
 }
 
 // CommentInput represents a single inline comment

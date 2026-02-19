@@ -95,7 +95,6 @@ and focuses on querying changes, fetching diffs, and managing reviews.`,
 	cmd.PersistentFlags().String("user", "", "Gerrit SSH user")
 	cmd.PersistentFlags().String("http-url", "", "Gerrit HTTP URL for REST API")
 	cmd.PersistentFlags().String("http-user", "", "HTTP username for authentication")
-	cmd.PersistentFlags().String("http-password", "", "HTTP password for authentication")
 	cmd.PersistentFlags().String("format", "json", "Output format: json or text")
 
 	// Bind flags to viper
@@ -105,7 +104,6 @@ and focuses on querying changes, fetching diffs, and managing reviews.`,
 	viper.BindPFlag("gerrit.user", cmd.PersistentFlags().Lookup("user"))
 	viper.BindPFlag("gerrit.http_url", cmd.PersistentFlags().Lookup("http-url"))
 	viper.BindPFlag("gerrit.http_user", cmd.PersistentFlags().Lookup("http-user"))
-	viper.BindPFlag("gerrit.http_password", cmd.PersistentFlags().Lookup("http-password"))
 	viper.BindPFlag("output.format", cmd.PersistentFlags().Lookup("format"))
 
 	// Initialize config on command initialization

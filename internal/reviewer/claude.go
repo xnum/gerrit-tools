@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,15 +73,17 @@ func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (stri
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Create stream log file
-	streamLogFile := filepath.Join("/tmp", fmt.Sprintf("claude-review-%d-stream.jsonl", time.Now().Unix()))
-	logFile, err := os.Create(streamLogFile)
-	if err != nil {
-		return "", fmt.Errorf("failed to create stream log file: %w", err)
+	// Stream log is opt-in only because raw stream output may contain sensitive data.
+	var streamLog *os.File
+	if os.Getenv("GERRIT_REVIEWER_SAVE_CLAUDE_STREAM") == "1" {
+		var err error
+		streamLog, err = os.CreateTemp("", "claude-review-*-stream.jsonl")
+		if err != nil {
+			return "", fmt.Errorf("failed to create stream log file: %w", err)
+		}
+		defer streamLog.Close()
+		c.log.Infof("Claude stream log enabled: %s", streamLog.Name())
 	}
-	defer logFile.Close()
-
-	c.log.Infof("Stream log: %s", streamLogFile)
 
 	// Build command arguments with stream-json output
 	args := c.buildClaudeArgs(prompt)
@@ -119,7 +120,6 @@ func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (stri
 		for stderrScanner.Scan() {
 			line := stderrScanner.Text()
 			stderrOutput.WriteString(line + "\n")
-			c.log.Debugf("[claude stderr] %s", line)
 		}
 	}()
 
@@ -137,9 +137,11 @@ func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (stri
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Write raw line to log file
-		if _, err := logFile.WriteString(line + "\n"); err != nil {
-			c.log.Warnf("Failed to write to stream log: %v", err)
+		// Write raw line only when explicitly enabled.
+		if streamLog != nil {
+			if _, err := streamLog.WriteString(line + "\n"); err != nil {
+				c.log.Warnf("Failed to write to stream log: %v", err)
+			}
 		}
 
 		// Try to parse as JSON event
@@ -203,11 +205,11 @@ func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (stri
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf("claude execution timed out after %v", timeout)
 		}
-		stderrStr := stderrOutput.String()
-		if stderrStr != "" {
-			return "", fmt.Errorf("claude execution failed: %w\nStderr:\n%s", err, stderrStr)
+		stderrLen := len(strings.TrimSpace(stderrOutput.String()))
+		if stderrLen > 0 {
+			return "", fmt.Errorf("claude execution failed: %w (stderr length: %d)", err, stderrLen)
 		}
-		return "", fmt.Errorf("claude execution failed: %w", err)
+		return "", fmt.Errorf("claude execution failed: %w (no stderr output)", err)
 	}
 
 	c.log.Infof("Claude execution completed: %d tool calls (%d Bash)", toolCallCount, bashCallCount)

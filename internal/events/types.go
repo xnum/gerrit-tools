@@ -2,10 +2,10 @@ package events
 
 // Event represents a Gerrit stream-events JSON line
 type Event struct {
-	Type           string     `json:"type"`
-	Change         *Change    `json:"change,omitempty"`
-	PatchSet       *PatchSet  `json:"patchSet,omitempty"`
-	EventCreatedOn int64      `json:"eventCreatedOn"`
+	Type           string    `json:"type"`
+	Change         *Change   `json:"change,omitempty"`
+	PatchSet       *PatchSet `json:"patchSet,omitempty"`
+	EventCreatedOn int64     `json:"eventCreatedOn"`
 }
 
 // Change represents change information in an event

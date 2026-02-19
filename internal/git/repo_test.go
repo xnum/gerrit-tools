@@ -10,9 +10,9 @@ import (
 
 func TestGetPatchsetRef(t *testing.T) {
 	tests := []struct {
-		changeNum    int
-		patchsetNum  int
-		expectedRef  string
+		changeNum   int
+		patchsetNum int
+		expectedRef string
 	}{
 		{12345, 3, "refs/changes/45/12345/3"},
 		{100, 1, "refs/changes/00/100/1"},

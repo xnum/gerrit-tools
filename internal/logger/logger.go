@@ -64,9 +64,7 @@ func (l *Logger) Close() error {
 
 // Info logs an informational message
 func (l *Logger) Info(format string, args ...interface{}) {
-	if l.verbose {
-		l.logger.Printf("[INFO] "+format, args...)
-	}
+	l.logger.Printf("[INFO] "+format, args...)
 }
 
 // Error logs an error message
@@ -118,8 +116,8 @@ func (l *Logger) Warnf(format string, args ...interface{}) {
 // Get returns the global logger instance, creating it if necessary
 func Get() *Logger {
 	once.Do(func() {
-		// Create default logger with verbose=true, no file
-		globalLogger, _ = NewLogger(true, "")
+		// Create default logger with verbose=false to avoid noisy/sensitive debug logs.
+		globalLogger, _ = NewLogger(false, "")
 	})
 	return globalLogger
 }
