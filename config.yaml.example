@@ -21,6 +21,7 @@ review:
 serve:
   workers: 1
   queue_size: 100
+  lazy_mode: false
   filter:
     projects: []
     exclude: []

@@ -39,6 +39,7 @@ type ReviewConfig struct {
 type ServeConfig struct {
 	Workers   int          // Number of concurrent workers
 	QueueSize int          // Maximum queue size
+	LazyMode  bool         // Keep only latest patchset per change in queue
 	Filter    FilterConfig // Event filtering rules
 }
 
@@ -87,6 +88,7 @@ func bindEnvVars() {
 	viper.BindEnv("git.repo_base_path", "GIT_REPO_BASE_PATH")
 	viper.BindEnv("review.claude_timeout", "CLAUDE_TIMEOUT")
 	viper.BindEnv("review.claude_skip_permissions", "CLAUDE_SKIP_PERMISSIONS")
+	viper.BindEnv("serve.lazy_mode", "SERVE_LAZY_MODE")
 }
 
 // initViperDefaults sets default values
@@ -97,6 +99,7 @@ func initViperDefaults() {
 	viper.SetDefault("review.claude_skip_permissions", false)
 	viper.SetDefault("serve.workers", 1)
 	viper.SetDefault("serve.queue_size", 100)
+	viper.SetDefault("serve.lazy_mode", false)
 }
 
 // buildConfig constructs a Config from current Viper state
@@ -120,6 +123,7 @@ func buildConfig() (*Config, error) {
 		Serve: ServeConfig{
 			Workers:   viper.GetInt("serve.workers"),
 			QueueSize: viper.GetInt("serve.queue_size"),
+			LazyMode:  viper.GetBool("serve.lazy_mode"),
 			Filter: FilterConfig{
 				Projects: viper.GetStringSlice("serve.filter.projects"),
 				Exclude:  viper.GetStringSlice("serve.filter.exclude"),

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -65,6 +66,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Printf("SSH Alias:    %s\n", cfg.Gerrit.SSHAlias)
 	fmt.Printf("Workers:      %d\n", cfg.Serve.Workers)
 	fmt.Printf("Queue size:   %d\n", cfg.Serve.QueueSize)
+	fmt.Printf("Lazy mode:    %t\n", cfg.Serve.LazyMode)
 	if len(cfg.Serve.Filter.Projects) > 0 {
 		fmt.Printf("Watch:        %v\n", cfg.Serve.Filter.Projects)
 	} else {
@@ -102,7 +104,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Projects: cfg.Serve.Filter.Projects,
 		Exclude:  cfg.Serve.Filter.Exclude,
 	})
-	q := queue.NewQueue(cfg.Serve.QueueSize)
+	q := queue.NewQueue(cfg.Serve.QueueSize, queue.QueueConfig{LazyMode: cfg.Serve.LazyMode})
 	rev := reviewer.NewReviewer(cfg)
 	pool := worker.NewPool(cfg.Serve.Workers, q, rev)
 
@@ -150,8 +152,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 			}
 
 			if err := q.Push(task); err != nil {
-				if err.Error() == "queue full" {
+				if errors.Is(err, queue.ErrQueueFull) {
 					log.Warnf("Queue full, dropping task: %s", task.ID)
+				} else if errors.Is(err, queue.ErrObsoleteTask) {
+					log.Debugf("Task superseded by newer patchset, dropping: %s", task.ID)
 				} else {
 					// Already queued (duplicate)
 					log.Debugf("Task already queued: %s", task.ID)
