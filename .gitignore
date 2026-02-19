@@ -1,0 +1,41 @@
+# Binaries
+gerrit-tool
+gr
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Build artifacts
+bin/
+.gocache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Config files (may contain secrets)
+config.yaml
+config.local.yaml
+config.*.yaml
+!config.yaml.example
+*.env
+
+# Temp files
+/tmp/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
