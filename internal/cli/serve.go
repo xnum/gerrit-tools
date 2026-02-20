@@ -199,6 +199,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 // runPreflightChecks runs startup checks before starting serve mode
 func runPreflightChecks(log *logger.Logger, cfg *config.Config) error {
 	cliCmd := "gerrit-cli"
+	log.Debugf("  [preflight] resolving executable: %s", cliCmd)
 
 	// 1. Check if gerrit-cli exists in PATH
 	log.Info("  Checking gerrit-cli...")
@@ -214,6 +215,7 @@ func runPreflightChecks(log *logger.Logger, cfg *config.Config) error {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, cliCmd, "change", "list", "status:open", "--limit", "1")
+	log.Debugf("  [preflight] executing command: %s", strings.Join(cmd.Args, " "))
 	cmd.Env = append(os.Environ(), cfg.GerritEnvVars()...)
 	output, err := cmd.Output()
 	if err != nil {
@@ -241,6 +243,7 @@ func runPreflightChecks(log *logger.Logger, cfg *config.Config) error {
 	// 3. Test SSH connection to Gerrit
 	log.Info("  Testing SSH connection to Gerrit...")
 	sshCmd := exec.CommandContext(ctx, "ssh", cfg.Gerrit.SSHAlias, "gerrit", "version")
+	log.Debugf("  [preflight] executing command: %s", strings.Join(sshCmd.Args, " "))
 	if output, err := sshCmd.CombinedOutput(); err != nil {
 		log.Warnf("  ✗ SSH test failed: %v", err)
 		log.Warnf("  Output: %s", string(output))
@@ -255,6 +258,7 @@ func runPreflightChecks(log *logger.Logger, cfg *config.Config) error {
 	}
 	log.Infof("  Checking %s CLI...", reviewCLI)
 	reviewCmd := exec.CommandContext(ctx, reviewCLI, "--version")
+	log.Debugf("  [preflight] executing command: %s", strings.Join(reviewCmd.Args, " "))
 	if output, err := reviewCmd.CombinedOutput(); err != nil {
 		log.Warnf("  ✗ %s not found: %v", reviewCLI, err)
 		return fmt.Errorf("%s CLI not found in PATH: %w", reviewCLI, err)
