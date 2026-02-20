@@ -1,6 +1,7 @@
 package reviewer
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gerrit-ai-review/gerrit-tools/internal/config"
@@ -129,5 +130,15 @@ func TestParseCodexEventLine_InvalidJSON(t *testing.T) {
 	eventType, command := parseCodexEventLine("{invalid")
 	if eventType != "" || command != "" {
 		t.Fatalf("expected empty parse result for invalid json, got type=%q command=%q", eventType, command)
+	}
+}
+
+func TestFormatCommandForLog_TruncatesLongArg(t *testing.T) {
+	cmd := formatCommandForLog("codex", []string{"exec", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	if cmd == "" {
+		t.Fatalf("expected non-empty formatted command")
+	}
+	if !strings.Contains(cmd, "...(truncated)") {
+		t.Fatalf("expected formatted command to include truncation marker, got %q", cmd)
 	}
 }

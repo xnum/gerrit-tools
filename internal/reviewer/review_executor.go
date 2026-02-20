@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,7 +54,7 @@ type ToolInput struct {
 	// Add other fields as needed
 }
 
-// NewReviewExecutor creates a new Claude executor
+// NewReviewExecutor creates a new review executor.
 func NewReviewExecutor(workDir string, cfg *config.Config) *ReviewExecutor {
 	return &ReviewExecutor{
 		workDir:   workDir,
@@ -96,6 +97,7 @@ func (c *ReviewExecutor) executeClaudeReview(ctx context.Context, prompt string,
 
 	// Build command arguments with stream-json output
 	args := c.buildClaudeArgs(prompt)
+	c.log.Debugf("Bootstrapping claude CLI command: %s", formatCommandForLog("claude", args))
 
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Dir = c.workDir
@@ -238,6 +240,7 @@ func (c *ReviewExecutor) executeCodexReview(ctx context.Context, prompt string, 
 	defer os.Remove(outputPath)
 
 	args := c.buildCodexArgs(prompt, outputPath)
+	c.log.Debugf("Bootstrapping codex CLI command: %s", formatCommandForLog("codex", args))
 	cmd := exec.CommandContext(ctx, "codex", args...)
 	cmd.Dir = c.workDir
 
@@ -519,4 +522,21 @@ func filterEnv(env []string, keysToRemove ...string) []string {
 		}
 	}
 	return filtered
+}
+
+func formatCommandForLog(command string, args []string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, strconv.Quote(command))
+	for _, arg := range args {
+		parts = append(parts, strconv.Quote(trimArgForLog(arg, 180)))
+	}
+	return strings.Join(parts, " ")
+}
+
+func trimArgForLog(arg string, maxLen int) string {
+	cleaned := strings.NewReplacer("\n", "\\n", "\r", "\\r", "\t", "\\t").Replace(arg)
+	if len(cleaned) <= maxLen {
+		return cleaned
+	}
+	return cleaned[:maxLen] + "...(truncated)"
 }

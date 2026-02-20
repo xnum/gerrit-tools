@@ -2,9 +2,11 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -188,5 +190,81 @@ func TestDiffStat(t *testing.T) {
 	}
 	if stat.Deletions != 3 {
 		t.Errorf("Expected Deletions 3, got %d", stat.Deletions)
+	}
+}
+
+func TestCheckoutPatchset_ReusesExistingBranch(t *testing.T) {
+	// Skip if git is not available
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available in PATH")
+	}
+
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	sourceRepo := filepath.Join(tmpDir, "source")
+
+	if err := os.MkdirAll(sourceRepo, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	setup := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@example.com"},
+		{"git", "config", "user.name", "Test User"},
+		{"git", "commit", "--allow-empty", "-m", "Initial commit"},
+	}
+	for _, args := range setup {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = sourceRepo
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("Failed to setup source repo: %v", err)
+		}
+	}
+
+	branchCmd := exec.Command("git", "branch", "--show-current")
+	branchCmd.Dir = sourceRepo
+	branchOut, err := branchCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to detect source branch: %v, output=%s", err, string(branchOut))
+	}
+	sourceBranch := strings.TrimSpace(string(branchOut))
+	if sourceBranch == "" {
+		t.Fatalf("detected empty source branch")
+	}
+
+	rm := NewRepoManager(repoPath, sourceRepo)
+	if err := rm.CloneOrUpdate(ctx); err != nil {
+		t.Fatalf("CloneOrUpdate() failed: %v", err)
+	}
+
+	if err := rm.FetchPatchset(ctx, fmt.Sprintf("refs/heads/%s", sourceBranch)); err != nil {
+		t.Fatalf("FetchPatchset() failed: %v", err)
+	}
+
+	branchName, err := rm.CheckoutPatchset(ctx, 10722, 4)
+	if err != nil {
+		t.Fatalf("first CheckoutPatchset() failed: %v", err)
+	}
+	if branchName != "review-10722-4" {
+		t.Fatalf("unexpected branch name %q", branchName)
+	}
+
+	// Simulate next run with same branch still present/current.
+	if err := rm.FetchPatchset(ctx, fmt.Sprintf("refs/heads/%s", sourceBranch)); err != nil {
+		t.Fatalf("second FetchPatchset() failed: %v", err)
+	}
+	if _, err := rm.CheckoutPatchset(ctx, 10722, 4); err != nil {
+		t.Fatalf("second CheckoutPatchset() should succeed with existing branch: %v", err)
+	}
+
+	currentBranchCmd := exec.Command("git", "branch", "--show-current")
+	currentBranchCmd.Dir = repoPath
+	currentOut, err := currentBranchCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to get current branch: %v, output=%s", err, string(currentOut))
+	}
+	if got := strings.TrimSpace(string(currentOut)); got != "review-10722-4" {
+		t.Fatalf("expected current branch review-10722-4, got %q", got)
 	}
 }

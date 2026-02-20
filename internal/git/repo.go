@@ -83,13 +83,9 @@ func (r *RepoManager) FetchPatchset(ctx context.Context, ref string) error {
 func (r *RepoManager) CheckoutPatchset(ctx context.Context, changeNum, patchsetNum int) (string, error) {
 	branchName := fmt.Sprintf("review-%d-%d", changeNum, patchsetNum)
 
-	// Delete branch if it already exists
-	cmd := exec.CommandContext(ctx, "git", "branch", "-D", branchName)
-	cmd.Dir = r.repoPath
-	_ = cmd.Run() // Ignore error if branch doesn't exist
-
-	// Create and checkout new branch from FETCH_HEAD
-	cmd = exec.CommandContext(ctx, "git", "checkout", "-b", branchName, "FETCH_HEAD")
+	// Recreate/reset the review branch from FETCH_HEAD.
+	// Using -B avoids failures when a previous aborted run left the branch behind.
+	cmd := exec.CommandContext(ctx, "git", "checkout", "-B", branchName, "FETCH_HEAD")
 	cmd.Dir = r.repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
