@@ -63,7 +63,7 @@ It can run in two modes:
 
 	// Global flags
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./config.yaml)")
-	cmd.PersistentFlags().Bool("dangerously-skip-permissions", false, "Pass --dangerously-skip-permissions to Claude CLI (unsafe)")
+	cmd.PersistentFlags().Bool("dangerously-skip-permissions", false, "Bypass permission/sandbox checks in the selected review CLI (unsafe)")
 	viper.BindPFlag("review.claude_skip_permissions", cmd.PersistentFlags().Lookup("dangerously-skip-permissions"))
 
 	// Initialize config on command initialization
@@ -201,6 +201,7 @@ func bindEnvVariables() {
 	viper.BindEnv("git.repo_base_path", "GIT_REPO_BASE_PATH")
 
 	// Review configuration
+	viper.BindEnv("review.cli", "REVIEW_CLI")
 	viper.BindEnv("review.claude_timeout", "CLAUDE_TIMEOUT")
 	viper.BindEnv("review.claude_skip_permissions", "CLAUDE_SKIP_PERMISSIONS")
 

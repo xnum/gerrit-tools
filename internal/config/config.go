@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -31,8 +32,9 @@ type GitConfig struct {
 
 // ReviewConfig holds review-specific settings
 type ReviewConfig struct {
-	ClaudeTimeout              int  // Timeout in seconds for Claude execution (default: 600)
-	ClaudeSkipPermissionsCheck bool // Whether to pass --dangerously-skip-permissions to Claude CLI
+	CLI                        string // AI CLI backend to use: "claude" (default) or "codex"
+	ClaudeTimeout              int    // Timeout in seconds for Claude execution (default: 600)
+	ClaudeSkipPermissionsCheck bool   // Whether to bypass permission/sandbox checks in the selected CLI
 }
 
 // ServeConfig holds serve mode specific settings
@@ -86,6 +88,7 @@ func bindEnvVars() {
 	viper.BindEnv("gerrit.http_user", "GERRIT_HTTP_USER")
 	viper.BindEnv("gerrit.http_password", "GERRIT_HTTP_PASSWORD")
 	viper.BindEnv("git.repo_base_path", "GIT_REPO_BASE_PATH")
+	viper.BindEnv("review.cli", "REVIEW_CLI")
 	viper.BindEnv("review.claude_timeout", "CLAUDE_TIMEOUT")
 	viper.BindEnv("review.claude_skip_permissions", "CLAUDE_SKIP_PERMISSIONS")
 	viper.BindEnv("serve.lazy_mode", "SERVE_LAZY_MODE")
@@ -95,6 +98,7 @@ func bindEnvVars() {
 func initViperDefaults() {
 	viper.SetDefault("gerrit.ssh_alias", "gerrit-review")
 	viper.SetDefault("git.repo_base_path", "/tmp/ai-review-repos")
+	viper.SetDefault("review.cli", "claude")
 	viper.SetDefault("review.claude_timeout", 600)
 	viper.SetDefault("review.claude_skip_permissions", false)
 	viper.SetDefault("serve.workers", 1)
@@ -117,6 +121,7 @@ func buildConfig() (*Config, error) {
 			RepoBasePath: viper.GetString("git.repo_base_path"),
 		},
 		Review: ReviewConfig{
+			CLI:                        strings.ToLower(strings.TrimSpace(viper.GetString("review.cli"))),
 			ClaudeTimeout:              viper.GetInt("review.claude_timeout"),
 			ClaudeSkipPermissionsCheck: viper.GetBool("review.claude_skip_permissions"),
 		},
@@ -158,6 +163,13 @@ func (c *Config) Validate() error {
 
 	if c.Git.RepoBasePath == "" {
 		return fmt.Errorf("git.repo_base_path is required")
+	}
+
+	switch c.Review.CLI {
+	case "", "claude", "codex":
+		// valid
+	default:
+		return fmt.Errorf("review.cli must be one of: claude, codex")
 	}
 
 	return nil

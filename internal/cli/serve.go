@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -243,14 +244,18 @@ func runPreflightChecks(log *logger.Logger, cfg *config.Config) error {
 	}
 	log.Info("  ✓ SSH connection test passed")
 
-	// 4. Check claude CLI
-	log.Info("  Checking claude CLI...")
-	claudeCmd := exec.CommandContext(ctx, "claude", "--version")
-	if output, err := claudeCmd.CombinedOutput(); err != nil {
-		log.Warnf("  ✗ claude not found: %v", err)
-		return fmt.Errorf("claude CLI not found in PATH: %w", err)
+	// 4. Check configured review CLI
+	reviewCLI := strings.ToLower(strings.TrimSpace(cfg.Review.CLI))
+	if reviewCLI == "" {
+		reviewCLI = "claude"
+	}
+	log.Infof("  Checking %s CLI...", reviewCLI)
+	reviewCmd := exec.CommandContext(ctx, reviewCLI, "--version")
+	if output, err := reviewCmd.CombinedOutput(); err != nil {
+		log.Warnf("  ✗ %s not found: %v", reviewCLI, err)
+		return fmt.Errorf("%s CLI not found in PATH: %w", reviewCLI, err)
 	} else {
-		log.Infof("  ✓ claude CLI found: %s", string(output))
+		log.Infof("  ✓ %s CLI found: %s", reviewCLI, string(output))
 	}
 
 	return nil

@@ -15,7 +15,7 @@ import (
 	codereview "github.com/gerrit-ai-review/gerrit-tools/skills/code-review"
 )
 
-// ClaudeExecutor handles execution of the Claude CLI for code review
+// ClaudeExecutor handles execution of the configured AI CLI for code review
 type ClaudeExecutor struct {
 	workDir   string
 	cfg       *config.Config
@@ -63,7 +63,7 @@ func NewClaudeExecutor(workDir string, cfg *config.Config) *ClaudeExecutor {
 	}
 }
 
-// ExecuteReview runs Claude CLI with the review prompt and returns the output
+// ExecuteReview runs the configured review CLI with the review prompt and returns the output
 func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (string, error) {
 	// Apply timeout
 	timeout := time.Duration(c.cfg.Review.ClaudeTimeout) * time.Second
@@ -73,6 +73,15 @@ func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (stri
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	switch c.reviewCLI() {
+	case "codex":
+		return c.executeCodexReview(ctx, prompt, timeout)
+	default:
+		return c.executeClaudeReview(ctx, prompt, timeout)
+	}
+}
+
+func (c *ClaudeExecutor) executeClaudeReview(ctx context.Context, prompt string, timeout time.Duration) (string, error) {
 	// Stream log is opt-in only because raw stream output may contain sensitive data.
 	var streamLog *os.File
 	if os.Getenv("GERRIT_REVIEWER_SAVE_CLAUDE_STREAM") == "1" {
@@ -217,6 +226,50 @@ func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (stri
 	return assistantText.String(), nil
 }
 
+func (c *ClaudeExecutor) executeCodexReview(ctx context.Context, prompt string, timeout time.Duration) (string, error) {
+	outputFile, err := os.CreateTemp("", "codex-review-*-last-message.txt")
+	if err != nil {
+		return "", fmt.Errorf("failed to create codex output file: %w", err)
+	}
+	outputPath := outputFile.Name()
+	if err := outputFile.Close(); err != nil {
+		return "", fmt.Errorf("failed to close codex output file: %w", err)
+	}
+	defer os.Remove(outputPath)
+
+	args := c.buildCodexArgs(prompt, outputPath)
+	cmd := exec.CommandContext(ctx, "codex", args...)
+	cmd.Dir = c.workDir
+
+	// Remove CLAUDECODE to avoid nested-session issues if this process is called from Claude Code.
+	env := filterEnv(os.Environ(), "CLAUDECODE")
+	cmd.Env = append(env, c.cfg.GerritEnvVars()...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("codex execution timed out after %v", timeout)
+		}
+		stderrLen := len(strings.TrimSpace(string(output)))
+		if stderrLen > 0 {
+			return "", fmt.Errorf("codex execution failed: %w (combined output length: %d)", err, stderrLen)
+		}
+		return "", fmt.Errorf("codex execution failed: %w (no output)", err)
+	}
+
+	finalOutput, err := os.ReadFile(outputPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read codex output file: %w", err)
+	}
+
+	text := strings.TrimSpace(string(finalOutput))
+	if text == "" {
+		text = strings.TrimSpace(string(output))
+	}
+
+	return text, nil
+}
+
 func (c *ClaudeExecutor) buildClaudeArgs(prompt string) []string {
 	args := []string{
 		"-p", prompt,
@@ -231,6 +284,34 @@ func (c *ClaudeExecutor) buildClaudeArgs(prompt string) []string {
 	}
 
 	return args
+}
+
+func (c *ClaudeExecutor) buildCodexArgs(prompt string, outputPath string) []string {
+	args := []string{
+		"exec",
+		"--skip-git-repo-check",
+		"--color", "never",
+		"--output-last-message", outputPath,
+	}
+
+	if c.cfg.Review.ClaudeSkipPermissionsCheck {
+		c.log.Warnf("Codex approvals and sandbox are disabled via --dangerously-bypass-approvals-and-sandbox")
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	} else {
+		args = append(args, "--full-auto")
+	}
+
+	args = append(args, prompt)
+
+	return args
+}
+
+func (c *ClaudeExecutor) reviewCLI() string {
+	cli := strings.ToLower(strings.TrimSpace(c.cfg.Review.CLI))
+	if cli == "" {
+		return "claude"
+	}
+	return cli
 }
 
 // BuildPrompt constructs the review prompt with change information

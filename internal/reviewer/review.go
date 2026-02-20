@@ -3,12 +3,21 @@ package reviewer
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gerrit-ai-review/gerrit-tools/internal/config"
 	"github.com/gerrit-ai-review/gerrit-tools/internal/git"
 	"github.com/gerrit-ai-review/gerrit-tools/internal/logger"
 )
+
+func configuredReviewCLI(cfg *config.Config) string {
+	cli := strings.ToLower(strings.TrimSpace(cfg.Review.CLI))
+	if cli == "" {
+		return "claude"
+	}
+	return cli
+}
 
 // Reviewer handles the complete code review workflow
 type Reviewer struct {
@@ -32,7 +41,7 @@ func NewReviewer(cfg *config.Config) *Reviewer {
 }
 
 // ReviewChange performs a complete review workflow
-// This prepares the git environment and executes Claude with the gerrit-cli tool
+// This prepares the git environment and executes the configured review CLI with gerrit-cli.
 func (r *Reviewer) ReviewChange(ctx context.Context, req ReviewRequest) error {
 	startTime := time.Now()
 
@@ -85,7 +94,7 @@ func (r *Reviewer) ReviewChange(ctx context.Context, req ReviewRequest) error {
 
 	r.log.Debugf("Changed files: %d", changedFiles)
 
-	// Build prompt and execute Claude
+	// Build prompt and execute configured review CLI
 	r.log.Debugf("Building review prompt...")
 	executor := NewClaudeExecutor(repoPath, r.cfg)
 	changeInfo := ChangeInfo{
@@ -99,15 +108,16 @@ func (r *Reviewer) ReviewChange(ctx context.Context, req ReviewRequest) error {
 		return fmt.Errorf("failed to build prompt: %w", err)
 	}
 
+	reviewCLI := configuredReviewCLI(r.cfg)
 	r.log.Debugf("Prompt length: %d characters", len(prompt))
-	r.log.Infof("Executing Claude for review (timeout: %ds)...", r.cfg.Review.ClaudeTimeout)
+	r.log.Infof("Executing %s for review (timeout: %ds)...", reviewCLI, r.cfg.Review.ClaudeTimeout)
 
 	output, err := executor.ExecuteReview(ctx, prompt)
 	if err != nil {
-		return fmt.Errorf("claude execution failed: %w", err)
+		return fmt.Errorf("%s execution failed: %w", reviewCLI, err)
 	}
 
-	r.log.Debugf("Claude output length: %d characters", len(output))
+	r.log.Debugf("%s output length: %d characters", reviewCLI, len(output))
 
 	r.log.Infof("Review completed: %s/c/%s/+/%d/%d",
 		r.cfg.Gerrit.HTTPUrl, req.Project, req.ChangeNumber, req.PatchsetNumber)

@@ -15,6 +15,7 @@ git:
   repo_base_path: /tmp/ai-review-repos
 
 review:
+  cli: claude # claude or codex
   claude_timeout: 600
   claude_skip_permissions: false
 

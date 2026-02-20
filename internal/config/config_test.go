@@ -11,6 +11,9 @@ func TestLoadFromEnv(t *testing.T) {
 	// Reset viper state
 	viper.Reset()
 
+	originalReviewCLI, hadReviewCLI := os.LookupEnv("REVIEW_CLI")
+	os.Unsetenv("REVIEW_CLI")
+
 	// Set up test environment variables
 	os.Setenv("GERRIT_SSH_ALIAS", "test-gerrit")
 	os.Setenv("GERRIT_HTTP_URL", "https://gerrit.test.com")
@@ -25,6 +28,11 @@ func TestLoadFromEnv(t *testing.T) {
 		os.Unsetenv("GERRIT_HTTP_PASSWORD")
 		os.Unsetenv("GIT_REPO_BASE_PATH")
 		os.Unsetenv("CLAUDE_SKIP_PERMISSIONS")
+		if hadReviewCLI {
+			os.Setenv("REVIEW_CLI", originalReviewCLI)
+		} else {
+			os.Unsetenv("REVIEW_CLI")
+		}
 	}()
 
 	cfg, err := LoadFromEnv()
@@ -46,6 +54,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 
 	// Verify defaults
+	if cfg.Review.CLI != "claude" {
+		t.Errorf("Expected CLI 'claude', got '%s'", cfg.Review.CLI)
+	}
 	if cfg.Review.ClaudeTimeout != 600 {
 		t.Errorf("Expected ClaudeTimeout 600, got %d", cfg.Review.ClaudeTimeout)
 	}
@@ -172,6 +183,9 @@ func TestGerritEnvVars(t *testing.T) {
 func TestClaudeSkipPermissionsDefaultFalse(t *testing.T) {
 	viper.Reset()
 
+	originalReviewCLI, hadReviewCLI := os.LookupEnv("REVIEW_CLI")
+	os.Unsetenv("REVIEW_CLI")
+
 	os.Setenv("GERRIT_SSH_ALIAS", "test-gerrit")
 	os.Setenv("GERRIT_HTTP_URL", "https://gerrit.test.com")
 	os.Setenv("GERRIT_HTTP_USER", "test-user")
@@ -183,6 +197,11 @@ func TestClaudeSkipPermissionsDefaultFalse(t *testing.T) {
 		os.Unsetenv("GERRIT_HTTP_USER")
 		os.Unsetenv("GERRIT_HTTP_PASSWORD")
 		os.Unsetenv("GIT_REPO_BASE_PATH")
+		if hadReviewCLI {
+			os.Setenv("REVIEW_CLI", originalReviewCLI)
+		} else {
+			os.Unsetenv("REVIEW_CLI")
+		}
 	}()
 
 	cfg, err := LoadFromEnv()
@@ -192,5 +211,57 @@ func TestClaudeSkipPermissionsDefaultFalse(t *testing.T) {
 
 	if cfg.Review.ClaudeSkipPermissionsCheck {
 		t.Fatalf("expected ClaudeSkipPermissionsCheck default false")
+	}
+	if cfg.Review.CLI != "claude" {
+		t.Fatalf("expected Review.CLI default claude, got %q", cfg.Review.CLI)
+	}
+}
+
+func TestReviewCLIFromEnv(t *testing.T) {
+	viper.Reset()
+
+	os.Setenv("GERRIT_SSH_ALIAS", "test-gerrit")
+	os.Setenv("GERRIT_HTTP_URL", "https://gerrit.test.com")
+	os.Setenv("GERRIT_HTTP_USER", "test-user")
+	os.Setenv("GERRIT_HTTP_PASSWORD", "test-pass")
+	os.Setenv("GIT_REPO_BASE_PATH", "/tmp/test-repos")
+	os.Setenv("REVIEW_CLI", "CoDeX")
+	defer func() {
+		os.Unsetenv("GERRIT_SSH_ALIAS")
+		os.Unsetenv("GERRIT_HTTP_URL")
+		os.Unsetenv("GERRIT_HTTP_USER")
+		os.Unsetenv("GERRIT_HTTP_PASSWORD")
+		os.Unsetenv("GIT_REPO_BASE_PATH")
+		os.Unsetenv("REVIEW_CLI")
+	}()
+
+	cfg, err := LoadFromEnv()
+	if err != nil {
+		t.Fatalf("LoadFromEnv() failed: %v", err)
+	}
+
+	if cfg.Review.CLI != "codex" {
+		t.Fatalf("expected Review.CLI to normalize to codex, got %q", cfg.Review.CLI)
+	}
+}
+
+func TestInvalidReviewCLI(t *testing.T) {
+	cfg := &Config{
+		Gerrit: GerritConfig{
+			SSHAlias: "gerrit",
+			HTTPUrl:  "https://gerrit.test.com",
+			HTTPUser: "user",
+			HTTPPass: "pass",
+		},
+		Git: GitConfig{
+			RepoBasePath: "/tmp/test-repos",
+		},
+		Review: ReviewConfig{
+			CLI: "invalid",
+		},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatalf("expected Validate() to fail for invalid review.cli")
 	}
 }

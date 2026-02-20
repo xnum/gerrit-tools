@@ -34,7 +34,8 @@ func runOneShot() {
 	project := flag.String("project", "", "Project name (required)")
 	changeNum := flag.Int("change-number", 0, "Change number (required)")
 	patchsetNum := flag.Int("patchset-number", 0, "Patchset number (required)")
-	skipPermissions := flag.Bool("dangerously-skip-permissions", false, "Pass --dangerously-skip-permissions to Claude CLI (unsafe)")
+	skipPermissions := flag.Bool("dangerously-skip-permissions", false, "Bypass permission/sandbox checks in the selected review CLI (unsafe)")
+	reviewCLI := flag.String("review-cli", "", "AI CLI backend: claude or codex")
 	version := flag.Bool("version", false, "Show version")
 
 	flag.Parse()
@@ -59,6 +60,12 @@ func runOneShot() {
 	if flagWasSet("dangerously-skip-permissions") {
 		if err := os.Setenv("CLAUDE_SKIP_PERMISSIONS", strconv.FormatBool(*skipPermissions)); err != nil {
 			fmt.Fprintf(os.Stderr, "Error setting CLAUDE_SKIP_PERMISSIONS: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if flagWasSet("review-cli") {
+		if err := os.Setenv("REVIEW_CLI", *reviewCLI); err != nil {
+			fmt.Fprintf(os.Stderr, "Error setting REVIEW_CLI: %v\n", err)
 			os.Exit(1)
 		}
 	}

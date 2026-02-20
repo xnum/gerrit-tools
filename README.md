@@ -1,7 +1,7 @@
 # gerrit-tools
 
 AI-assisted Gerrit tooling in Go:
-- `gerrit-reviewer`: reviews Gerrit patchsets via Claude CLI and posts results back to Gerrit.
+- `gerrit-reviewer`: reviews Gerrit patchsets via Claude CLI or Codex CLI and posts results back to Gerrit.
 - `gerrit-cli`: script-friendly Gerrit CLI for querying changes, diffs, comments, drafts, and posting reviews.
 
 ## Disclaimer
@@ -19,7 +19,7 @@ This project is completely a vibe-coding artifact. Use at your own risk.
 - Automated reviewer worker pool
 - JSON-first CLI output for automation
 - Config via `config.yaml` and/or env vars
-- Configurable Claude permission mode (safe by default)
+- Configurable AI CLI permission mode (safe by default)
 
 ## Repository Status
 
@@ -33,7 +33,7 @@ This project is completely a vibe-coding artifact. Use at your own risk.
 - `git`
 - `ssh` connectivity to Gerrit
 - Gerrit account with required permissions
-- Claude CLI in `PATH` (required for `gerrit-reviewer`)
+- Claude CLI or Codex CLI in `PATH` (required for `gerrit-reviewer`)
 
 ## Installation
 
@@ -69,11 +69,14 @@ export GIT_REPO_BASE_PATH="/tmp/ai-review-repos"
 ### Review env vars
 
 ```bash
+export REVIEW_CLI=claude   # or codex
 export CLAUDE_TIMEOUT=600
 export CLAUDE_SKIP_PERMISSIONS=false
 ```
 
-`CLAUDE_SKIP_PERMISSIONS=true` adds Claude flag `--dangerously-skip-permissions`.
+`CLAUDE_SKIP_PERMISSIONS=true` adds:
+- Claude: `--dangerously-skip-permissions`
+- Codex: `--dangerously-bypass-approvals-and-sandbox`
 Default is `false`.
 
 ## Usage
@@ -82,6 +85,16 @@ Default is `false`.
 
 ```bash
 ./dist/gerrit-reviewer \
+  --project "my/project" \
+  --change-number 12345 \
+  --patchset-number 3
+```
+
+Use Codex for one-shot review:
+
+```bash
+./dist/gerrit-reviewer \
+  --review-cli codex \
   --project "my/project" \
   --change-number 12345 \
   --patchset-number 3
@@ -101,6 +114,12 @@ Default is `false`.
 
 ```bash
 ./dist/gerrit-reviewer serve
+```
+
+Use Codex in serve mode:
+
+```bash
+REVIEW_CLI=codex ./dist/gerrit-reviewer serve
 ```
 
 Serve mode also supports:
