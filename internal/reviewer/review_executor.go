@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,6 +54,8 @@ type ToolInput struct {
 	Description string `json:"description,omitempty"`
 	// Add other fields as needed
 }
+
+var ErrRateLimited = errors.New("review cli rate limited")
 
 // NewReviewExecutor creates a new review executor.
 func NewReviewExecutor(workDir string, cfg *config.Config) *ReviewExecutor {
@@ -216,7 +219,11 @@ func (c *ReviewExecutor) executeClaudeReview(ctx context.Context, prompt string,
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf("claude execution timed out after %v", timeout)
 		}
-		stderrLen := len(strings.TrimSpace(stderrOutput.String()))
+		stderrText := strings.TrimSpace(stderrOutput.String())
+		if isRateLimitedErrorText(stderrText) || isRateLimitedErrorText(err.Error()) {
+			return "", fmt.Errorf("%w: claude execution failed: %v", ErrRateLimited, err)
+		}
+		stderrLen := len(stderrText)
 		if stderrLen > 0 {
 			return "", fmt.Errorf("claude execution failed: %w (stderr length: %d)", err, stderrLen)
 		}
@@ -327,11 +334,16 @@ func (c *ReviewExecutor) executeCodexReview(ctx context.Context, prompt string, 
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf("codex execution timed out after %v", timeout)
 		}
-		stderrLen := len(strings.TrimSpace(stderrOutput.String()))
+		stderrText := strings.TrimSpace(stderrOutput.String())
+		stdoutText := strings.TrimSpace(stdoutOutput.String())
+		if isRateLimitedErrorText(stderrText) || isRateLimitedErrorText(stdoutText) || isRateLimitedErrorText(err.Error()) {
+			return "", fmt.Errorf("%w: codex execution failed: %v", ErrRateLimited, err)
+		}
+		stderrLen := len(stderrText)
 		if stderrLen > 0 {
 			return "", fmt.Errorf("codex execution failed: %w (stderr length: %d)", err, stderrLen)
 		}
-		stdoutLen := len(strings.TrimSpace(stdoutOutput.String()))
+		stdoutLen := len(stdoutText)
 		if stdoutLen > 0 {
 			return "", fmt.Errorf("codex execution failed: %w (stdout length: %d)", err, stdoutLen)
 		}
@@ -418,6 +430,34 @@ func isCodexToolRelatedEvent(eventType string) bool {
 	return strings.Contains(eventType, "exec") ||
 		strings.Contains(eventType, "tool") ||
 		strings.Contains(eventType, "command")
+}
+
+func isRateLimitedErrorText(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "" {
+		return false
+	}
+
+	markers := []string{
+		"rate limit",
+		"rate-limit",
+		"ratelimit",
+		"too many requests",
+		"http 429",
+		"status 429",
+		"error 429",
+		"quota exceeded",
+		"insufficient_quota",
+		"retry later",
+	}
+
+	for _, marker := range markers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func findFirstCommandString(v any) string {

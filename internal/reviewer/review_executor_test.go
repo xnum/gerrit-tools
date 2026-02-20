@@ -142,3 +142,39 @@ func TestFormatCommandForLog_TruncatesLongArg(t *testing.T) {
 		t.Fatalf("expected formatted command to include truncation marker, got %q", cmd)
 	}
 }
+
+func TestIsRateLimitedErrorText(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{
+			name: "429",
+			text: "request failed with HTTP 429",
+			want: true,
+		},
+		{
+			name: "rate limit wording",
+			text: "Rate limit exceeded. Please retry later.",
+			want: true,
+		},
+		{
+			name: "quota wording",
+			text: "insufficient_quota for current token allocation",
+			want: true,
+		},
+		{
+			name: "generic error",
+			text: "command exited with status 1",
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		got := isRateLimitedErrorText(tc.text)
+		if got != tc.want {
+			t.Fatalf("%s: expected %v, got %v", tc.name, tc.want, got)
+		}
+	}
+}

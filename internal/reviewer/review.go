@@ -2,13 +2,16 @@ package reviewer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/gerrit-ai-review/gerrit-tools/internal/config"
+	"github.com/gerrit-ai-review/gerrit-tools/internal/gerrit"
 	"github.com/gerrit-ai-review/gerrit-tools/internal/git"
 	"github.com/gerrit-ai-review/gerrit-tools/internal/logger"
+	"github.com/gerrit-ai-review/gerrit-tools/pkg/types"
 )
 
 func configuredReviewCLI(cfg *config.Config) string {
@@ -114,6 +117,12 @@ func (r *Reviewer) ReviewChange(ctx context.Context, req ReviewRequest) error {
 
 	output, err := executor.ExecuteReview(ctx, prompt)
 	if err != nil {
+		if errors.Is(err, ErrRateLimited) {
+			if postErr := r.postRateLimitFailure(ctx, req, reviewCLI, err); postErr != nil {
+				r.log.Warnf("failed to post rate-limit failure notice for %s #%d/%d: %v",
+					req.Project, req.ChangeNumber, req.PatchsetNumber, postErr)
+			}
+		}
 		return fmt.Errorf("%s execution failed: %w", reviewCLI, err)
 	}
 
@@ -126,4 +135,45 @@ func (r *Reviewer) ReviewChange(ctx context.Context, req ReviewRequest) error {
 	r.log.Infof("Total time: %.1fs", elapsed.Seconds())
 
 	return nil
+}
+
+func (r *Reviewer) postRateLimitFailure(ctx context.Context, req ReviewRequest, reviewCLI string, cause error) error {
+	client := gerrit.NewClient(r.cfg.Gerrit.HTTPUrl, r.cfg.Gerrit.HTTPUser, r.cfg.Gerrit.HTTPPass)
+
+	review := &types.ReviewResult{
+		Summary: buildRateLimitFailureSummary(reviewCLI, cause),
+		Vote:    0,
+	}
+
+	if err := client.PostReview(ctx, req.ChangeNumber, req.PatchsetNumber, review); err != nil {
+		return err
+	}
+
+	r.log.Infof("Posted rate-limit failure notice: %s #%d/%d",
+		req.Project, req.ChangeNumber, req.PatchsetNumber)
+	return nil
+}
+
+func buildRateLimitFailureSummary(reviewCLI string, cause error) string {
+	var sb strings.Builder
+	errMsg := "rate limit"
+	if cause != nil {
+		errMsg = truncateForReviewMessage(cause.Error(), 220)
+	}
+
+	sb.WriteString("Automated review started but could not finish because the AI backend hit a rate limit.\n\n")
+	sb.WriteString(fmt.Sprintf("Backend: %s\n", reviewCLI))
+	sb.WriteString("Result: no review comments were produced.\n")
+	sb.WriteString(fmt.Sprintf("Error: %s\n", errMsg))
+	sb.WriteString("\nPlease retry this patchset later.")
+
+	return sb.String()
+}
+
+func truncateForReviewMessage(text string, maxLen int) string {
+	text = strings.TrimSpace(text)
+	if len(text) <= maxLen {
+		return text
+	}
+	return text[:maxLen] + "...(truncated)"
 }

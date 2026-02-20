@@ -121,7 +121,7 @@ func (c *Client) formatReviewMessage(result *types.ReviewResult) string {
 	msg.WriteString("🤖 AI Code Review\n\n")
 	msg.WriteString(result.Summary)
 	msg.WriteString("\n\n---\n")
-	msg.WriteString("_Automated review by Claude_")
+	msg.WriteString("_Automated review by Gerrit AI Reviewer_")
 
 	return msg.String()
 }

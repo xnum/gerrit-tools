@@ -144,7 +144,7 @@ func TestFormatReviewMessage(t *testing.T) {
 	}
 
 	// Should contain automated signature
-	if !contains(msg, "Automated review by Claude") {
+	if !contains(msg, "Automated review by Gerrit AI Reviewer") {
 		t.Error("Message should contain automated signature")
 	}
 }
