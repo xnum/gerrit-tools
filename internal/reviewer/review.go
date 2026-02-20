@@ -96,7 +96,7 @@ func (r *Reviewer) ReviewChange(ctx context.Context, req ReviewRequest) error {
 
 	// Build prompt and execute configured review CLI
 	r.log.Debugf("Building review prompt...")
-	executor := NewClaudeExecutor(repoPath, r.cfg)
+	executor := NewReviewExecutor(repoPath, r.cfg)
 	changeInfo := ChangeInfo{
 		Project:        req.Project,
 		ChangeNumber:   req.ChangeNumber,

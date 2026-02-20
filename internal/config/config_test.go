@@ -57,6 +57,12 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.Review.CLI != "claude" {
 		t.Errorf("Expected CLI 'claude', got '%s'", cfg.Review.CLI)
 	}
+	if cfg.Logging.Level != "info" {
+		t.Errorf("Expected Logging.Level 'info', got '%s'", cfg.Logging.Level)
+	}
+	if cfg.Logging.Verbose {
+		t.Errorf("Expected Logging.Verbose false by default")
+	}
 	if cfg.Review.ClaudeTimeout != 600 {
 		t.Errorf("Expected ClaudeTimeout 600, got %d", cfg.Review.ClaudeTimeout)
 	}
@@ -263,5 +269,48 @@ func TestInvalidReviewCLI(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatalf("expected Validate() to fail for invalid review.cli")
+	}
+}
+
+func TestInvalidLoggingLevel(t *testing.T) {
+	cfg := &Config{
+		Gerrit: GerritConfig{
+			SSHAlias: "gerrit",
+			HTTPUrl:  "https://gerrit.test.com",
+			HTTPUser: "user",
+			HTTPPass: "pass",
+		},
+		Git: GitConfig{
+			RepoBasePath: "/tmp/test-repos",
+		},
+		Logging: LoggingConfig{
+			Level: "nope",
+		},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatalf("expected Validate() to fail for invalid logging.level")
+	}
+}
+
+func TestLogVerboseFromLevelAndFlag(t *testing.T) {
+	cfg := &Config{
+		Logging: LoggingConfig{
+			Level: "info",
+		},
+	}
+	if cfg.LogVerbose() {
+		t.Fatalf("expected LogVerbose false for info level")
+	}
+
+	cfg.Logging.Level = "debug"
+	if !cfg.LogVerbose() {
+		t.Fatalf("expected LogVerbose true for debug level")
+	}
+
+	cfg.Logging.Level = "info"
+	cfg.Logging.Verbose = true
+	if !cfg.LogVerbose() {
+		t.Fatalf("expected LogVerbose true when verbose flag set")
 	}
 }

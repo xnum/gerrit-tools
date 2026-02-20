@@ -211,6 +211,33 @@ func TestLogger_Close(t *testing.T) {
 	}
 }
 
+func TestDefaultVerboseFromEnv(t *testing.T) {
+	t.Setenv("GERRIT_REVIEWER_DEBUG", "")
+	t.Setenv("LOG_VERBOSE", "")
+	t.Setenv("LOG_LEVEL", "")
+
+	if defaultVerboseFromEnv() {
+		t.Fatalf("expected default verbose=false")
+	}
+
+	t.Setenv("GERRIT_REVIEWER_DEBUG", "1")
+	if !defaultVerboseFromEnv() {
+		t.Fatalf("expected verbose=true from GERRIT_REVIEWER_DEBUG")
+	}
+
+	t.Setenv("GERRIT_REVIEWER_DEBUG", "")
+	t.Setenv("LOG_VERBOSE", "true")
+	if !defaultVerboseFromEnv() {
+		t.Fatalf("expected verbose=true from LOG_VERBOSE")
+	}
+
+	t.Setenv("LOG_VERBOSE", "")
+	t.Setenv("LOG_LEVEL", "debug")
+	if !defaultVerboseFromEnv() {
+		t.Fatalf("expected verbose=true from LOG_LEVEL=debug")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && containsHelper(s, substr)
 }

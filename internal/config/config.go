@@ -11,10 +11,11 @@ import (
 
 // Config holds all configuration for the gerrit-reviewer
 type Config struct {
-	Gerrit GerritConfig
-	Git    GitConfig
-	Review ReviewConfig
-	Serve  ServeConfig
+	Gerrit  GerritConfig
+	Git     GitConfig
+	Review  ReviewConfig
+	Serve   ServeConfig
+	Logging LoggingConfig
 }
 
 // GerritConfig holds Gerrit connection settings
@@ -43,6 +44,13 @@ type ServeConfig struct {
 	QueueSize int          // Maximum queue size
 	LazyMode  bool         // Keep only latest patchset per change in queue
 	Filter    FilterConfig // Event filtering rules
+}
+
+// LoggingConfig holds logger behavior settings.
+type LoggingConfig struct {
+	Level   string // Log level: info (default), debug, trace, warn, error
+	File    string // Optional log file path. Empty means stderr only.
+	Verbose bool   // Explicit debug logging switch (same effect as level=debug/trace)
 }
 
 // FilterConfig holds event filtering rules
@@ -92,6 +100,9 @@ func bindEnvVars() {
 	viper.BindEnv("review.claude_timeout", "CLAUDE_TIMEOUT")
 	viper.BindEnv("review.claude_skip_permissions", "CLAUDE_SKIP_PERMISSIONS")
 	viper.BindEnv("serve.lazy_mode", "SERVE_LAZY_MODE")
+	viper.BindEnv("logging.level", "LOG_LEVEL")
+	viper.BindEnv("logging.file", "LOG_FILE")
+	viper.BindEnv("logging.verbose", "LOG_VERBOSE")
 }
 
 // initViperDefaults sets default values
@@ -104,6 +115,9 @@ func initViperDefaults() {
 	viper.SetDefault("serve.workers", 1)
 	viper.SetDefault("serve.queue_size", 100)
 	viper.SetDefault("serve.lazy_mode", false)
+	viper.SetDefault("logging.level", "info")
+	viper.SetDefault("logging.file", "")
+	viper.SetDefault("logging.verbose", false)
 }
 
 // buildConfig constructs a Config from current Viper state
@@ -133,6 +147,11 @@ func buildConfig() (*Config, error) {
 				Projects: viper.GetStringSlice("serve.filter.projects"),
 				Exclude:  viper.GetStringSlice("serve.filter.exclude"),
 			},
+		},
+		Logging: LoggingConfig{
+			Level:   strings.ToLower(strings.TrimSpace(viper.GetString("logging.level"))),
+			File:    strings.TrimSpace(viper.GetString("logging.file")),
+			Verbose: viper.GetBool("logging.verbose"),
 		},
 	}
 
@@ -172,7 +191,28 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("review.cli must be one of: claude, codex")
 	}
 
+	switch c.Logging.Level {
+	case "", "info", "debug", "trace", "warn", "warning", "error":
+		// valid
+	default:
+		return fmt.Errorf("logging.level must be one of: info, debug, trace, warn, error")
+	}
+
 	return nil
+}
+
+// LogVerbose reports whether debug-level logging should be enabled.
+func (c *Config) LogVerbose() bool {
+	if c.Logging.Verbose {
+		return true
+	}
+
+	switch c.Logging.Level {
+	case "debug", "trace":
+		return true
+	default:
+		return false
+	}
 }
 
 // GetGitURL returns the SSH URL for cloning a project

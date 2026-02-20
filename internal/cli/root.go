@@ -207,4 +207,9 @@ func bindEnvVariables() {
 
 	// Output configuration
 	viper.BindEnv("output.format", "OUTPUT_FORMAT")
+
+	// Logging configuration
+	viper.BindEnv("logging.level", "LOG_LEVEL")
+	viper.BindEnv("logging.file", "LOG_FILE")
+	viper.BindEnv("logging.verbose", "LOG_VERBOSE")
 }

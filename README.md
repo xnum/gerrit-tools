@@ -72,12 +72,24 @@ export GIT_REPO_BASE_PATH="/tmp/ai-review-repos"
 export REVIEW_CLI=claude   # or codex
 export CLAUDE_TIMEOUT=600
 export CLAUDE_SKIP_PERMISSIONS=false
+export LOG_LEVEL=info      # set debug to show tool-call debug logs
 ```
 
 `CLAUDE_SKIP_PERMISSIONS=true` adds:
 - Claude: `--dangerously-skip-permissions`
 - Codex: `--dangerously-bypass-approvals-and-sandbox`
 Default is `false`.
+
+### Logging
+
+`config.yaml` supports:
+
+```yaml
+logging:
+  level: info     # info/debug/trace/warn/error
+  verbose: false  # true also enables debug logs (same effect as level=debug)
+  file: ""        # optional log file path
+```
 
 ## Usage
 

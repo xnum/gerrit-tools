@@ -56,6 +56,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	if err := ConfigureGlobalLogger(cfg); err != nil {
+		return err
+	}
+
 	log := logger.Get()
 
 	// Print banner

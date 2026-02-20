@@ -33,4 +33,5 @@ output:
 
 logging:
   level: info
+  verbose: false
   file: ""

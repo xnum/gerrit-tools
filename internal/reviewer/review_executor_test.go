@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildClaudeArgs_DefaultSecureMode(t *testing.T) {
-	exec := NewClaudeExecutor(".", &config.Config{
+	exec := NewReviewExecutor(".", &config.Config{
 		Review: config.ReviewConfig{
 			ClaudeSkipPermissionsCheck: false,
 		},
@@ -23,7 +23,7 @@ func TestBuildClaudeArgs_DefaultSecureMode(t *testing.T) {
 }
 
 func TestBuildClaudeArgs_SkipPermissionsEnabled(t *testing.T) {
-	exec := NewClaudeExecutor(".", &config.Config{
+	exec := NewReviewExecutor(".", &config.Config{
 		Review: config.ReviewConfig{
 			ClaudeSkipPermissionsCheck: true,
 		},
@@ -45,7 +45,7 @@ func TestBuildClaudeArgs_SkipPermissionsEnabled(t *testing.T) {
 }
 
 func TestBuildCodexArgs_DefaultSafeMode(t *testing.T) {
-	exec := NewClaudeExecutor(".", &config.Config{
+	exec := NewReviewExecutor(".", &config.Config{
 		Review: config.ReviewConfig{
 			CLI:                        "codex",
 			ClaudeSkipPermissionsCheck: false,
@@ -56,6 +56,7 @@ func TestBuildCodexArgs_DefaultSafeMode(t *testing.T) {
 
 	requiredArgs := []string{
 		"exec",
+		"--json",
 		"--skip-git-repo-check",
 		"--color", "never",
 		"--output-last-message", "/tmp/out.txt",
@@ -75,7 +76,7 @@ func TestBuildCodexArgs_DefaultSafeMode(t *testing.T) {
 }
 
 func TestBuildCodexArgs_SkipPermissionsEnabled(t *testing.T) {
-	exec := NewClaudeExecutor(".", &config.Config{
+	exec := NewReviewExecutor(".", &config.Config{
 		Review: config.ReviewConfig{
 			CLI:                        "codex",
 			ClaudeSkipPermissionsCheck: true,
@@ -93,7 +94,7 @@ func TestBuildCodexArgs_SkipPermissionsEnabled(t *testing.T) {
 }
 
 func TestReviewCLIFallbackToClaude(t *testing.T) {
-	exec := NewClaudeExecutor(".", &config.Config{
+	exec := NewReviewExecutor(".", &config.Config{
 		Review: config.ReviewConfig{},
 	})
 
@@ -109,4 +110,24 @@ func contains(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestParseCodexEventLine_WithCommand(t *testing.T) {
+	line := `{"type":"agent_reasoning","details":{"tool":{"name":"Bash","command":"echo hi"}}}`
+
+	eventType, command := parseCodexEventLine(line)
+
+	if eventType != "agent_reasoning" {
+		t.Fatalf("expected event type agent_reasoning, got %q", eventType)
+	}
+	if command != "echo hi" {
+		t.Fatalf("expected command 'echo hi', got %q", command)
+	}
+}
+
+func TestParseCodexEventLine_InvalidJSON(t *testing.T) {
+	eventType, command := parseCodexEventLine("{invalid")
+	if eventType != "" || command != "" {
+		t.Fatalf("expected empty parse result for invalid json, got type=%q command=%q", eventType, command)
+	}
 }

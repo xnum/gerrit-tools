@@ -75,6 +75,10 @@ func runOneShot() {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
 	}
+	if err := cli.ConfigureGlobalLogger(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing logger: %v\n", err)
+		os.Exit(1)
+	}
 
 	rev := reviewer.NewReviewer(cfg)
 

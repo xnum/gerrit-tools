@@ -15,8 +15,8 @@ import (
 	codereview "github.com/gerrit-ai-review/gerrit-tools/skills/code-review"
 )
 
-// ClaudeExecutor handles execution of the configured AI CLI for code review
-type ClaudeExecutor struct {
+// ReviewExecutor handles execution of the configured AI CLI for code review
+type ReviewExecutor struct {
 	workDir   string
 	cfg       *config.Config
 	debugMode bool
@@ -53,9 +53,9 @@ type ToolInput struct {
 	// Add other fields as needed
 }
 
-// NewClaudeExecutor creates a new Claude executor
-func NewClaudeExecutor(workDir string, cfg *config.Config) *ClaudeExecutor {
-	return &ClaudeExecutor{
+// NewReviewExecutor creates a new Claude executor
+func NewReviewExecutor(workDir string, cfg *config.Config) *ReviewExecutor {
+	return &ReviewExecutor{
 		workDir:   workDir,
 		cfg:       cfg,
 		debugMode: true,
@@ -64,7 +64,7 @@ func NewClaudeExecutor(workDir string, cfg *config.Config) *ClaudeExecutor {
 }
 
 // ExecuteReview runs the configured review CLI with the review prompt and returns the output
-func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (string, error) {
+func (c *ReviewExecutor) ExecuteReview(ctx context.Context, prompt string) (string, error) {
 	// Apply timeout
 	timeout := time.Duration(c.cfg.Review.ClaudeTimeout) * time.Second
 	if timeout <= 0 {
@@ -81,7 +81,7 @@ func (c *ClaudeExecutor) ExecuteReview(ctx context.Context, prompt string) (stri
 	}
 }
 
-func (c *ClaudeExecutor) executeClaudeReview(ctx context.Context, prompt string, timeout time.Duration) (string, error) {
+func (c *ReviewExecutor) executeClaudeReview(ctx context.Context, prompt string, timeout time.Duration) (string, error) {
 	// Stream log is opt-in only because raw stream output may contain sensitive data.
 	var streamLog *os.File
 	if os.Getenv("GERRIT_REVIEWER_SAVE_CLAUDE_STREAM") == "1" {
@@ -226,7 +226,7 @@ func (c *ClaudeExecutor) executeClaudeReview(ctx context.Context, prompt string,
 	return assistantText.String(), nil
 }
 
-func (c *ClaudeExecutor) executeCodexReview(ctx context.Context, prompt string, timeout time.Duration) (string, error) {
+func (c *ReviewExecutor) executeCodexReview(ctx context.Context, prompt string, timeout time.Duration) (string, error) {
 	outputFile, err := os.CreateTemp("", "codex-review-*-last-message.txt")
 	if err != nil {
 		return "", fmt.Errorf("failed to create codex output file: %w", err)
@@ -245,17 +245,97 @@ func (c *ClaudeExecutor) executeCodexReview(ctx context.Context, prompt string, 
 	env := filterEnv(os.Environ(), "CLAUDECODE")
 	cmd.Env = append(env, c.cfg.GerritEnvVars()...)
 
-	output, err := cmd.CombinedOutput()
+	// Stream log is opt-in only because raw stream output may contain sensitive data.
+	var streamLog *os.File
+	if os.Getenv("GERRIT_REVIEWER_SAVE_CODEX_STREAM") == "1" {
+		streamLog, err = os.CreateTemp("", "codex-review-*-stream.jsonl")
+		if err != nil {
+			return "", fmt.Errorf("failed to create codex stream log file: %w", err)
+		}
+		defer streamLog.Close()
+		c.log.Infof("Codex stream log enabled: %s", streamLog.Name())
+	}
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		return "", fmt.Errorf("failed to get codex stdout pipe: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return "", fmt.Errorf("failed to get codex stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("failed to start codex: %w", err)
+	}
+
+	var stderrOutput strings.Builder
+	go func() {
+		stderrScanner := bufio.NewScanner(stderr)
+		for stderrScanner.Scan() {
+			line := stderrScanner.Text()
+			stderrOutput.WriteString(line + "\n")
+		}
+	}()
+
+	var stdoutOutput strings.Builder
+	var toolCallCount int
+	var eventCount int
+
+	scanner := bufio.NewScanner(stdout)
+	const maxCapacity = 1024 * 1024 // 1MB
+	buf := make([]byte, maxCapacity)
+	scanner.Buffer(buf, maxCapacity)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		stdoutOutput.WriteString(line + "\n")
+
+		if streamLog != nil {
+			if _, err := streamLog.WriteString(line + "\n"); err != nil {
+				c.log.Warnf("Failed to write to codex stream log: %v", err)
+			}
+		}
+
+		eventType, command := parseCodexEventLine(line)
+		if eventType == "" {
+			continue
+		}
+		eventCount++
+
+		if command != "" {
+			toolCallCount++
+			c.log.Debugf("[Tool #%d] Bash: %s", toolCallCount, truncate(command, 100))
+			continue
+		}
+
+		if isCodexToolRelatedEvent(eventType) {
+			toolCallCount++
+			c.log.Debugf("[Tool #%d] Codex event: %s", toolCallCount, eventType)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading codex output: %w", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf("codex execution timed out after %v", timeout)
 		}
-		stderrLen := len(strings.TrimSpace(string(output)))
+		stderrLen := len(strings.TrimSpace(stderrOutput.String()))
 		if stderrLen > 0 {
-			return "", fmt.Errorf("codex execution failed: %w (combined output length: %d)", err, stderrLen)
+			return "", fmt.Errorf("codex execution failed: %w (stderr length: %d)", err, stderrLen)
+		}
+		stdoutLen := len(strings.TrimSpace(stdoutOutput.String()))
+		if stdoutLen > 0 {
+			return "", fmt.Errorf("codex execution failed: %w (stdout length: %d)", err, stdoutLen)
 		}
 		return "", fmt.Errorf("codex execution failed: %w (no output)", err)
 	}
+
+	c.log.Infof("Codex execution completed: %d events (%d tool-related)", eventCount, toolCallCount)
 
 	finalOutput, err := os.ReadFile(outputPath)
 	if err != nil {
@@ -264,13 +344,13 @@ func (c *ClaudeExecutor) executeCodexReview(ctx context.Context, prompt string, 
 
 	text := strings.TrimSpace(string(finalOutput))
 	if text == "" {
-		text = strings.TrimSpace(string(output))
+		text = strings.TrimSpace(stdoutOutput.String())
 	}
 
 	return text, nil
 }
 
-func (c *ClaudeExecutor) buildClaudeArgs(prompt string) []string {
+func (c *ReviewExecutor) buildClaudeArgs(prompt string) []string {
 	args := []string{
 		"-p", prompt,
 		"--output-format", "stream-json",
@@ -286,9 +366,10 @@ func (c *ClaudeExecutor) buildClaudeArgs(prompt string) []string {
 	return args
 }
 
-func (c *ClaudeExecutor) buildCodexArgs(prompt string, outputPath string) []string {
+func (c *ReviewExecutor) buildCodexArgs(prompt string, outputPath string) []string {
 	args := []string{
 		"exec",
+		"--json",
 		"--skip-git-repo-check",
 		"--color", "never",
 		"--output-last-message", outputPath,
@@ -306,7 +387,7 @@ func (c *ClaudeExecutor) buildCodexArgs(prompt string, outputPath string) []stri
 	return args
 }
 
-func (c *ClaudeExecutor) reviewCLI() string {
+func (c *ReviewExecutor) reviewCLI() string {
 	cli := strings.ToLower(strings.TrimSpace(c.cfg.Review.CLI))
 	if cli == "" {
 		return "claude"
@@ -314,8 +395,54 @@ func (c *ClaudeExecutor) reviewCLI() string {
 	return cli
 }
 
+func parseCodexEventLine(line string) (string, string) {
+	var payload any
+	if err := json.Unmarshal([]byte(line), &payload); err != nil {
+		return "", ""
+	}
+
+	m, ok := payload.(map[string]any)
+	if !ok {
+		return "", ""
+	}
+
+	eventType, _ := m["type"].(string)
+	return eventType, findFirstCommandString(payload)
+}
+
+func isCodexToolRelatedEvent(eventType string) bool {
+	eventType = strings.ToLower(eventType)
+	return strings.Contains(eventType, "exec") ||
+		strings.Contains(eventType, "tool") ||
+		strings.Contains(eventType, "command")
+}
+
+func findFirstCommandString(v any) string {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, val := range x {
+			key := strings.ToLower(k)
+			if key == "command" || key == "cmd" {
+				if s, ok := val.(string); ok {
+					return s
+				}
+			}
+			if nested := findFirstCommandString(val); nested != "" {
+				return nested
+			}
+		}
+	case []any:
+		for _, val := range x {
+			if nested := findFirstCommandString(val); nested != "" {
+				return nested
+			}
+		}
+	}
+	return ""
+}
+
 // BuildPrompt constructs the review prompt with change information
-func (c *ClaudeExecutor) BuildPrompt(changeInfo ChangeInfo) (string, error) {
+func (c *ReviewExecutor) BuildPrompt(changeInfo ChangeInfo) (string, error) {
 	skillContent, err := c.loadSkillContent()
 	if err != nil {
 		return "", err
@@ -352,7 +479,7 @@ Follow the review workflow described above. Start with Phase 1:
 	return prompt, nil
 }
 
-func (c *ClaudeExecutor) loadSkillContent() (string, error) {
+func (c *ReviewExecutor) loadSkillContent() (string, error) {
 	c.log.Debugf("Using embedded skill content")
 	skillContent, err := codereview.Content()
 	if err != nil {

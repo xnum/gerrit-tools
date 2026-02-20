@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -116,8 +117,7 @@ func (l *Logger) Warnf(format string, args ...interface{}) {
 // Get returns the global logger instance, creating it if necessary
 func Get() *Logger {
 	once.Do(func() {
-		// Create default logger with verbose=false to avoid noisy/sensitive debug logs.
-		globalLogger, _ = NewLogger(false, "")
+		globalLogger, _ = NewLogger(defaultVerboseFromEnv(), "")
 	})
 	return globalLogger
 }
@@ -144,4 +144,25 @@ func (s *Step) Complete() {
 func (s *Step) Fail(err error) {
 	duration := time.Since(s.startTime)
 	s.logger.Error("%s failed after %.2fs: %v", s.name, duration.Seconds(), err)
+}
+
+func defaultVerboseFromEnv() bool {
+	if parseBoolEnv(os.Getenv("GERRIT_REVIEWER_DEBUG")) {
+		return true
+	}
+	if parseBoolEnv(os.Getenv("LOG_VERBOSE")) {
+		return true
+	}
+
+	level := strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL")))
+	return level == "debug" || level == "trace"
+}
+
+func parseBoolEnv(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
